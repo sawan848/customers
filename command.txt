@@ -1,0 +1,215 @@
+helm list -A
+helm version
+ helm repo update
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+ helm search repo prometheus-community
+helm show values prometheus-community/kube-prometheus-stack
+
+
+
+helm install prometheus prometheus-community/kube-prometheus-stack --namespace monitoring --version  88.3.0 -f prometheus-stack-values.yaml.yml
+
+helm upgrade --install grafana/loki-stack --version 2.10.3 --namespace monitoring -f
+
+
+
+
+
+
+
+
+
+
+ kubectl --namespace monitoring get secrets prometheus-grafana -o jsonpath="{.data.admin-password}" | base64 -d ; echo
+
+
+
+
+
+
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+
+helm repo list
+helm repo add stable https://charts.helm.sh/stable
+helm repo update
+kubectl create namespace monitoring
+
+helm install kind-prometheus prometheus-community/kube-prometheus-stack --namespace monitoring --set prometheus.service.nodePort=30000 --set prometheus.service.type=NodePort --set grafana.service.nodePort=31000 --set grafana.service.type=NodePort --set alertmanager.service.nodePort=32000 --set alertmanager.service.type=NodePort --set prometheus-node-exporter.service.nodePort=32001 --set prometheus-node-exporter.service.type=NodePort
+kubectl get svc -n monitoring
+kubectl get namespace
+
+
+kubectl port-forward svc/kind-prometheus-kube-prome-prometheus -n monitoring 9090:9090
+kubectl port-forward svc/kind-prometheus-grafana -n monitoring 3000:80
+
+
+
+sum (rate (container_cpu_usage_seconds_total{namespace="spring-sapp"}[1m])) / sum (machine_cpu_cores) * 100
+
+sum (container_memory_usage_bytes{namespace="spring-sapp"}) by (pod)
+
+
+sum(rate(container_network_receive_bytes_total{namespace="spring-sapp"}[5m])) by (pod)
+sum(rate(container_network_transmit_bytes_total{namespace="spring-sapp"}[5m])) by (pod)
+
+
+kubectl get secret --namespace monitoring kind-prometheus-grafana \
+  -o jsonpath="{.data.admin-user}" | base64 --decode ; echo
+
+kubectl get secret kind-prometheus-grafana -n monitoring \
+  -o jsonpath="{.data.admin-password}" | base64 --decode ; echo
+
+
+
+
+
+
+
+helm repo add grafana https://grafana.github.io/helm-charts
+helm repo update
+
+
+helm install loki grafana/loki  --namespace monitoring
+
+
+helm install loki grafana/loki  --namespace monitoring  -f loki-values.yaml
+
+
+
+
+
+
+kind get clusters
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+lokii
+
+
+helm install customer-chart  .\customer-chart -n spring-sapp
+NAME: customer-chart
+LAST DEPLOYED: Mon Aug 17 11:04:44 2026
+NAMESPACE: spring-sapp
+STATUS: deployed
+REVISION: 1
+NOTES:
+1. Get the application URL by running these commands:
+  export NODE_PORT=$(kubectl get --namespace spring-sapp -o jsonpath="{.spec.ports[0].nodePort}" services customer-chart)
+  export NODE_IP=$(kubectl get nodes --namespace spring-sapp -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT
+PS D:\study\java\spring\spring-web\part0\customers\customers\helm-charts> helm install loki grafana/loki  --namespace monitoring  -f loki-values.yaml
+Error: INSTALLATION FAILED: execution error at (loki/templates/validate.yaml:40:4): You must provide a schema_config for Loki, one is not provided as this will be individual for every Loki cluster. See https://grafana.com/docs/loki/latest/operations/storage/schema/ for schema information. For quick testing (with no persistence) add `--set loki.useTestSchema=true`
+PS D:\study\java\spring\spring-web\part0\customers\customers\helm-charts> helm install loki grafana/loki  --namespace monitoring  -f loki-values.yaml
+NAME: loki
+LAST DEPLOYED: Mon Aug 17 12:08:51 2026
+NAMESPACE: monitoring
+STATUS: deployed
+REVISION: 1
+TEST SUITE: None
+NOTES:
+***********************************************************************
+ Welcome to Grafana Loki
+ Chart version: 7.3.0
+ Chart Name: loki
+ Loki version: 3.6.12
+***********************************************************************
+
+** Please be patient while the chart is being deployed **
+
+Tip:
+
+  Watch the deployment status using the command: kubectl get pods -w --namespace monitoring
+
+If pods are taking too long to schedule make sure pod affinity can be fulfilled in the current cluster.
+
+***********************************************************************
+Installed components:
+***********************************************************************
+* loki
+
+Loki has been deployed as a single binary.
+This means a single pod is handling reads and writes. You can scale that pod vertically by adding more CPU and memory resources.
+
+
+***********************************************************************
+Sending logs to Loki
+***********************************************************************
+
+Loki has been configured with a gateway (nginx) to support reads and writes from a single component.
+
+You can send logs from inside the cluster using the cluster DNS:
+
+http://loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push
+
+You can test to send data from outside the cluster by port-forwarding the gateway to your local machine:
+
+  kubectl port-forward --namespace monitoring svc/loki-gateway 3100:80 &
+
+And then using http://127.0.0.1:3100/loki/api/v1/push URL as shown below:
+
+```
+curl -H "Content-Type: application/json" -XPOST -s "http://127.0.0.1:3100/loki/api/v1/push"  \
+--data-raw "{\"streams\": [{\"stream\": {\"job\": \"test\"}, \"values\": [[\"$(date +%s)000000000\", \"fizzbuzz\"]]}]}"
+```
+
+Then verify that Loki did receive the data using the following command:
+
+```
+curl "http://127.0.0.1:3100/loki/api/v1/query_range" --data-urlencode 'query={job="test"}' | jq .data.result
+```
+
+***********************************************************************
+Connecting Grafana to Loki
+***********************************************************************
+
+If Grafana operates within the cluster, you'll set up a new Loki datasource by utilizing the following URL:
+
+http://loki-gateway.monitoring.svc.cluster.local/
+PS D:\study\java\spring\spring-web\part0\customers\customers\helm-charts>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

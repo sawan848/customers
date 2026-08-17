@@ -1,0 +1,61 @@
+loki:
+  enabled: true
+  image:
+    repository: grafana/loki
+    tag: "2.9.3"
+  replicas: 2
+
+  config:
+    schema_config:
+      configs:
+        - from: "2025-11-27"
+          store: tsdb
+          object_store: filesystem
+          schema: v13
+          index:
+            prefix: index_
+            period: 24h
+
+    storage_config:
+      tsdb_shipper:
+        active_index_directory: /data/tsdb-index
+        cache_location: /data/tsdb-cache
+
+    ingester:
+      lifecycler:
+        ring:
+          replication_factor: 2
+
+    query_scheduler:
+      max_outstanding_requests_per_tenant: 32768
+
+    querier:
+      max_concurrent: 16
+
+promtail:
+  enabled: true
+  image:
+    repository: grafana/promtail
+    tag: "2.9.3"
+  config:
+    clients:
+      - url: http://loki:3100/loki/api/v1/push
+    positions:
+      filename: /run/promtail/positions.yaml
+    scrape_configs:
+      - job_name: kubernetes-pods
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_name]
+            target_label: job
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - action: replace
+            source_labels: [__meta_kubernetes_pod_container_name]
+            target_label: container
+
+  rbac:
+    create: true

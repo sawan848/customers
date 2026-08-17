@@ -1,0 +1,240 @@
+# Prometheus Recording Rules
+# Recording rules allow you to pre-compute frequently needed or computationally expensive expressions
+# and save their result as a new set of time series
+
+groups:
+  # ============================================
+  # HTTP Request Metrics
+  # ============================================
+  - name: http_request_metrics
+    interval: 30s
+    rules:
+      # Request rate by status
+      - record: job:http:request:rate5m
+        expr: sum(rate(http_server_requests_seconds_count[5m])) by (job, instance, status)
+
+      # Request rate by handler
+      - record: job:http:request:rate5m:by_handler
+        expr: sum(rate(http_server_requests_seconds_count[5m])) by (job, instance, handler)
+
+      # Request rate by method
+      - record: job:http:request:rate5m:by_method
+        expr: sum(rate(http_server_requests_seconds_count[5m])) by (job, instance, method)
+
+      # Error rate (5xx)
+      - record: job:http:error:rate5m
+        expr: sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m])) by (job, instance)
+
+      # 4xx error rate
+      - record: job:http:client_error:rate5m
+        expr: sum(rate(http_server_requests_seconds_count{status=~"4.."}[5m])) by (job, instance)
+
+      # Response time p50
+      - record: job:http:response_time:p50
+        expr: histogram_quantile(0.50, sum(rate(http_server_requests_seconds_bucket[5m])) by (le, job, instance))
+
+      # Response time p95
+      - record: job:http:response_time:p95
+        expr: histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket[5m])) by (le, job, instance))
+
+      # Response time p99
+      - record: job:http:response_time:p99
+        expr: histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket[5m])) by (le, job, instance))
+
+      # Average response time
+      - record: job:http:response_time:avg5m
+        expr: sum(rate(http_server_requests_seconds_sum[5m])) by (job, instance) / sum(rate(http_server_requests_seconds_count[5m])) by (job, instance)
+
+  # ============================================
+  # JVM Memory Metrics
+  # ============================================
+  - name: jvm_memory_metrics
+    interval: 30s
+    rules:
+      # Heap memory usage percentage
+      - record: job:jvm:memory:heap:usage:percent
+        expr: (jvm_memory_used_bytes{area="heap"} / jvm_memory_max_bytes{area="heap"}) * 100
+
+      # Non-heap memory usage percentage
+      - record: job:jvm:memory:nonheap:usage:percent
+        expr: (jvm_memory_used_bytes{area="nonheap"} / jvm_memory_max_bytes{area="nonheap"}) * 100
+
+      # Memory pressure (combined heap + non-heap)
+      - record: job:jvm:memory:total:usage:percent
+        expr: ((jvm_memory_used_bytes{area="heap"} + jvm_memory_used_bytes{area="nonheap"}) / (jvm_memory_max_bytes{area="heap"} + jvm_memory_max_bytes{area="nonheap"})) * 100
+
+      # Young generation collection time
+      - record: job:jvm:gc:young:time:rate1m
+        expr: rate(jvm_gc_pause_seconds_sum{action="end of minor GC"}[1m])
+
+      # Old generation collection time
+      - record: job:jvm:gc:old:time:rate1m
+        expr: rate(jvm_gc_pause_seconds_sum{action="end of major GC"}[1m])
+
+      # GC count rate
+      - record: job:jvm:gc:count:rate5m
+        expr: rate(jvm_gc_pause_seconds_count[5m])
+
+  # ============================================
+  # JVM Thread Metrics
+  # ============================================
+  - name: jvm_thread_metrics
+    interval: 30s
+    rules:
+      # Thread utilization
+      - record: job:jvm:thread:utilization:percent
+        expr: (jvm_threads_live_threads / jvm_threads_peak_threads) * 100
+
+      # Blocked thread ratio
+      - record: job:jvm:thread:blocked:ratio
+        expr: jvm_threads_blocked_threads / jvm_threads_live_threads
+
+      # Waiting thread ratio
+      - record: job:jvm:thread:waiting:ratio
+        expr: jvm_threads_waiting_threads / jvm_threads_live_threads
+
+  # ============================================
+  # Database Connection Pool
+  # ============================================
+  - name: database_metrics
+    interval: 30s
+    rules:
+      # Connection pool utilization
+      - record: job:db:connection:utilization:percent
+        expr: (hikaricp_connections_active / hikaricp_connections) * 100
+
+      # Available connections ratio
+      - record: job:db:connection:available:ratio
+        expr: hikaricp_connections_available / hikaricp_connections
+
+      # Connection pool wait rate
+      - record: job:db:connection:wait:rate5m
+        expr: rate(hikaricp_connection_timeout_total[5m])
+
+  # ============================================
+  # Process Metrics
+  # ============================================
+  - name: process_metrics
+    interval: 30s
+    rules:
+      # CPU utilization
+      - record: job:process:cpu:utilization:percent
+        expr: process_cpu_usage * 100
+
+      # File descriptor usage
+      - record: job:process:fd:utilization:percent
+        expr: (process_open_fds / process_max_fds) * 100
+
+      # Virtual memory usage
+      - record: job:process:vm:usage:bytes
+        expr: process_resident_memory_bytes
+
+  # ============================================
+  # Kafka Metrics (if using Kafka)
+  # ============================================
+  - name: kafka_metrics
+    interval: 30s
+    rules:
+      # Kafka producer rate
+      - record: job:kafka:producer:rate5m
+        expr: sum(rate(kafka_producer_record_send_total[5m])) by (job, topic, instance)
+
+      # Kafka producer error rate
+      - record: job:kafka:producer:error:rate5m
+        expr: sum(rate(kafka_producer_record_error_total[5m])) by (job, topic, instance)
+
+      # Kafka consumer lag
+      - record: job:kafka:consumer:lag:sum
+        expr: sum(kafka_consumer_lag) by (job, group, topic, instance)
+
+      # Kafka consumer commit rate
+      - record: job:kafka:consumer:commit:rate5m
+        expr: sum(rate(kafka_consumer_commit_total[5m])) by (job, group, instance)
+
+  # ============================================
+  # Application Custom Metrics
+  # ============================================
+  - name: application_metrics
+    interval: 30s
+    rules:
+      # Total API calls
+      - record: job:api:calls:total
+        expr: sum(increase(api_calls_total[5m])) by (job, instance)
+
+      # Total API errors
+      - record: job:api:errors:total
+        expr: sum(increase(api_errors_total[5m])) by (job, instance)
+
+      # API error rate
+      - record: job:api:error:rate5m
+        expr: sum(rate(api_errors_total[5m])) by (job, instance) / sum(rate(api_calls_total[5m])) by (job, instance)
+
+      # Database query time (average)
+      - record: job:db:query:time:avg5m
+        expr: sum(rate(database_query_time_sum[5m])) by (job, instance) / sum(rate(database_query_time_count[5m])) by (job, instance)
+
+  # ============================================
+  # Aggregate Metrics (Cross-instance aggregation)
+  # ============================================
+  - name: aggregate_metrics
+    interval: 30s
+    rules:
+      # Total request rate across all instances
+      - record: :http:request:rate5m
+        expr: sum(rate(http_server_requests_seconds_count[5m]))
+
+      # Total error rate across all instances
+      - record: :http:error:rate5m
+        expr: sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m]))
+
+      # Total active connections
+      - record: :db:connection:active:total
+        expr: sum(hikaricp_connections_active)
+
+      # Average heap memory usage
+      - record: :jvm:memory:heap:usage:percent:avg
+        expr: avg(job:jvm:memory:heap:usage:percent)
+
+      # Max heap memory usage
+      - record: :jvm:memory:heap:usage:percent:max
+        expr: max(job:jvm:memory:heap:usage:percent)
+
+      # P95 response time across all instances
+      - record: :http:response_time:p95
+        expr: histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket[5m])) by (le))
+
+  # ============================================
+  # Saturation Metrics
+  # ============================================
+  - name: saturation_metrics
+    interval: 30s
+    rules:
+      # CPU saturation (if load average available)
+      - record: job:system:cpu:saturation
+        expr: node_load1 / count(node_cpu_seconds_total{mode="idle"}) by (instance)
+
+      # Memory saturation
+      - record: job:system:memory:saturation:percent
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100
+
+      # Disk I/O saturation
+      - record: job:system:io:saturation
+        expr: rate(node_disk_io_time_weighted_ms[5m]) / 5000
+
+  # ============================================
+  # Service Level Indicators (SLI)
+  # ============================================
+  - name: service_level_indicators
+    interval: 30s
+    rules:
+      # Request success rate
+      - record: job:sli:request:success:rate
+        expr: sum(rate(http_server_requests_seconds_count{status!~"5.."}[5m])) by (job) / sum(rate(http_server_requests_seconds_count[5m])) by (job)
+
+      # Availability (uptime)
+      - record: job:sli:availability:percent
+        expr: (count(up{job="spring-boot-app"} == 1) / count(up{job="spring-boot-app"})) * 100
+
+      # Latency SLI (response time < 200ms)
+      - record: job:sli:latency:p99
+        expr: histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket[5m])) by (le, job))

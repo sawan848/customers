@@ -1,0 +1,132 @@
+# Alertmanager Configuration
+global:
+  resolve_timeout: 5m
+  slack_api_url: 'YOUR_SLACK_WEBHOOK_URL'
+  pagerduty_url: 'https://events.pagerduty.com/v2/enqueue'
+
+# Template files
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+# Routes for alert routing
+route:
+  receiver: 'default'
+  group_by: ['alertname', 'cluster', 'service']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 12h
+
+  # Sub-routes
+  routes:
+    # Critical alerts
+    - match:
+        severity: critical
+      receiver: 'critical'
+      group_wait: 0s
+      group_interval: 5m
+      repeat_interval: 30m
+      continue: true
+
+    # Warning alerts
+    - match:
+        severity: warning
+      receiver: 'warning'
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 2h
+
+    # Service-specific routing
+    - match:
+        service: spring-boot
+      receiver: 'spring-boot-team'
+      group_wait: 10s
+      group_interval: 5m
+      repeat_interval: 1h
+
+    # Infrastructure alerts
+    - match_re:
+        alertname: 'High.*|Low.*|.*Down'
+      receiver: 'infrastructure-team'
+      group_wait: 10s
+      group_interval: 5m
+
+# Receivers/Channels
+receivers:
+  # Default receiver
+  - name: 'default'
+    slack_configs:
+      - channel: '#alerts-general'
+        title: '[{{ .GroupLabels.severity | toUpper }}] {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+        send_resolved: true
+        color: '{{ if eq .Status "firing" }}danger{{ else }}good{{ end }}'
+
+  # Critical alerts receiver
+  - name: 'critical'
+    slack_configs:
+      - channel: '#alerts-critical'
+        title: '🚨 [CRITICAL] {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}\n{{ end }}'
+        send_resolved: true
+        color: 'danger'
+        actions:
+          - type: button
+            text: 'View Alert'
+            url: '{{ (index .Alerts 0).GeneratorURL }}'
+    
+    pagerduty_configs:
+      - service_key: 'YOUR_PAGERDUTY_SERVICE_KEY'
+        description: '{{ .GroupLabels.alertname }}: {{ (index .Alerts 0).Annotations.summary }}'
+        severity: 'critical'
+
+  # Warning alerts receiver
+  - name: 'warning'
+    slack_configs:
+      - channel: '#alerts-warning'
+        title: '⚠️ [WARNING] {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}\n{{ end }}'
+        send_resolved: true
+        color: 'warning'
+
+  # Spring Boot team receiver
+  - name: 'spring-boot-team'
+    slack_configs:
+      - channel: '#spring-boot-alerts'
+        title: '[{{ .Status | toUpper }}] {{ .GroupLabels.alertname }}'
+        text: 'Service: {{ .GroupLabels.service }}\n{{ range .Alerts }}{{ .Annotations.description }}\n{{ end }}'
+        send_resolved: true
+        color: '{{ if eq .Status "firing" }}danger{{ else }}good{{ end }}'
+
+  # Infrastructure team receiver
+  - name: 'infrastructure-team'
+    slack_configs:
+      - channel: '#infrastructure-alerts'
+        title: '[{{ .Status | toUpper }}] {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}\n{{ end }}'
+        send_resolved: true
+        color: '{{ if eq .Status "firing" }}danger{{ else }}good{{ end }}'
+    
+    email_configs:
+      - to: 'infrastructure@example.com'
+        from: 'alertmanager@example.com'
+        smarthost: 'smtp.example.com:587'
+        auth_username: 'alertmanager@example.com'
+        auth_password: 'PASSWORD'
+        headers:
+          Subject: 'Alert: {{ .GroupLabels.alertname }}'
+
+# Inhibition rules (suppress alerts under certain conditions)
+inhibit_rules:
+  # Suppress warning if critical exists for same alert
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'service', 'instance']
+
+  # Suppress all alerts if application is down
+  - source_match:
+      alertname: 'ApplicationDown'
+    target_match_re:
+      alertname: '.*'
+    equal: ['instance']

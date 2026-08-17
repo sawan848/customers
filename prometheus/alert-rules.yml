@@ -1,0 +1,178 @@
+# Prometheus Alert Rules
+groups:
+  - name: spring-boot-alerts
+    interval: 30s
+    rules:
+      # JVM Alerts
+      - alert: HighJVMMemoryUsage
+        expr: 'jvm_memory_used_bytes{area="heap"} / jvm_memory_max_bytes{area="heap"} > 0.85'
+        for: 5m
+        labels:
+          severity: warning
+          service: spring-boot
+        annotations:
+          summary: "High JVM heap memory usage detected"
+          description: "JVM heap memory usage is above 85% on {{ $labels.instance }}"
+          value: "{{ $value | humanizePercentage }}"
+
+      - alert: CriticalJVMMemoryUsage
+        expr: 'jvm_memory_used_bytes{area="heap"} / jvm_memory_max_bytes{area="heap"} > 0.95'
+        for: 2m
+        labels:
+          severity: critical
+          service: spring-boot
+        annotations:
+          summary: "Critical JVM heap memory usage"
+          description: "JVM heap memory usage is above 95% on {{ $labels.instance }}"
+          value: "{{ $value | humanizePercentage }}"
+
+      # HTTP Requests
+      - alert: HighErrorRate
+        expr: 'rate(http_server_requests_seconds_count{status=~"5.."}[5m]) > 0.05'
+        for: 5m
+        labels:
+          severity: warning
+          service: spring-boot
+        annotations:
+          summary: "High HTTP 5xx error rate"
+          description: "High error rate (5xx) detected on {{ $labels.instance }}: {{ $value | humanizePercentage }}"
+
+      - alert: HighResponseTime
+        expr: 'histogram_quantile(0.95, rate(http_server_requests_seconds_bucket[5m])) > 1'
+        for: 5m
+        labels:
+          severity: warning
+          service: spring-boot
+        annotations:
+          summary: "High HTTP response time"
+          description: "95th percentile response time is above 1s on {{ $labels.instance }}"
+          value: "{{ $value | humanizeDuration }}"
+
+      # Application Availability
+      - alert: ApplicationDown
+        expr: 'up{job="spring-boot-app"} == 0'
+        for: 1m
+        labels:
+          severity: critical
+          service: spring-boot
+        annotations:
+          summary: "Spring Boot application is down"
+          description: "{{ $labels.instance }} has been down for more than 1 minute"
+
+      # Thread Pool Alerts
+      - alert: HighThreadCount
+        expr: 'jvm_threads_live_threads > 100'
+        for: 5m
+        labels:
+          severity: warning
+          service: spring-boot
+        annotations:
+          summary: "High number of live threads"
+          description: "{{ $labels.instance }} has {{ $value }} live threads"
+
+      - alert: HighThreadPoolQueueSize
+        expr: 'tomcat_threads_current > 50'
+        for: 5m
+        labels:
+          severity: warning
+          service: spring-boot
+        annotations:
+          summary: "High Tomcat thread pool queue size"
+          description: "Tomcat is using {{ $value }} threads on {{ $labels.instance }}"
+
+      # Database Connection Pool
+      - alert: LowDatabaseConnectionPool
+        expr: 'hikaricp_connections_available < 5'
+        for: 5m
+        labels:
+          severity: warning
+          service: spring-boot
+        annotations:
+          summary: "Low database connection pool availability"
+          description: "Database connection pool has only {{ $value }} available connections"
+
+      - alert: HighDatabaseConnectionUsage
+        expr: 'hikaricp_connections_active / hikaricp_connections > 0.8'
+        for: 5m
+        labels:
+          severity: warning
+          service: spring-boot
+        annotations:
+          summary: "High database connection usage"
+          description: "Database connection pool usage is above 80%: {{ $value | humanizePercentage }}"
+
+      # Garbage Collection
+      - alert: HighGCTime
+        expr: 'rate(jvm_gc_pause_seconds_sum[5m]) > 0.5'
+        for: 5m
+        labels:
+          severity: warning
+          service: spring-boot
+        annotations:
+          summary: "High garbage collection time"
+          description: "GC time is {{ $value | humanizeDuration }} per second"
+
+      # Exception Rate
+      - alert: HighExceptionRate
+        expr: 'rate(application_exceptions_total[5m]) > 1'
+        for: 5m
+        labels:
+          severity: warning
+          service: spring-boot
+        annotations:
+          summary: "High exception rate detected"
+          description: "Application is throwing {{ $value }} exceptions per second"
+
+  - name: infrastructure-alerts
+    interval: 30s
+    rules:
+      # CPU
+      - alert: HighCPUUsage
+        expr: 'process_cpu_usage > 0.8'
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is above 80%: {{ $value | humanizePercentage }}"
+
+      # Disk
+      - alert: LowDiskSpace
+        expr: 'node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.15'
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low disk space"
+          description: "Less than 15% disk space available"
+
+      # Container
+      - alert: ContainerRestart
+        expr: 'rate(container_last_seen[5m]) > 0'
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container restarted"
+          description: "Container {{ $labels.container }} has restarted"
+
+  - name: loki-alerts
+    interval: 30s
+    rules:
+      - alert: LokiHighLogRate
+        expr: 'rate(loki_distributor_lines_received_total[5m]) > 100000'
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High log ingestion rate in Loki"
+          description: "Loki is receiving more than 100K logs per second"
+
+      - alert: LokiIndexErrors
+        expr: 'rate(loki_index_chunk_encoding_errors_total[5m]) > 0'
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Loki index encoding errors"
+          description: "Loki is experiencing index encoding errors"

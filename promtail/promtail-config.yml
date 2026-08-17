@@ -1,0 +1,137 @@
+# Promtail configuration for Docker container log shipping
+server:
+  http_listen_port: 9080
+  log_level: info
+  log_format: json
+
+positions:
+  filename: /tmp/positions.yaml
+  sync_period: 10s
+
+# Client configuration - where to send logs
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+    tenant_id: docker
+    batchwait: 5s
+    batchsize: 102400
+
+# Scrape configurations
+scrape_configs:
+  # Docker daemon logs
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        filters:
+          - name: status
+            values:
+              - running
+    
+    # Relabel to add service name
+    relabel_configs:
+      # Get container name from Docker labels
+      - source_labels: ['__meta_docker_container_name']
+        target_label: 'container'
+      
+      # Get service name
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
+        target_label: 'service'
+      
+      # Get image name
+      - source_labels: ['__meta_docker_container_image_name']
+        target_label: 'image'
+      
+      # Add job label
+      - source_labels: ['__meta_docker_container_name']
+        regex: '(.*)-(.*)'
+        action: drop
+        if: '${__meta_docker_container_name} !~ ^spring-boot.*'
+    
+    pipeline_stages:
+      # Parse JSON logs if available
+      - json:
+          expressions:
+            timestamp: timestamp
+            level: level
+            message: message
+            logger: logger
+            thread: thread
+            
+      # Extract timestamp
+      - timestamp:
+          source: timestamp
+          format: "2006-01-02T15:04:05.000Z"
+          location: UTC
+          fallbacks:
+            - "2006-01-02 15:04:05"
+            - "Jan 2 15:04:05"
+      
+      # Add labels
+      - labels:
+          timestamp:
+          level:
+          logger:
+          thread:
+
+  # Spring Boot Application logs
+  - job_name: spring-boot-logs
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        filters:
+          - name: label
+            values:
+              - "com.docker.compose.service=app"
+    
+    relabel_configs:
+      - source_labels: ['__meta_docker_container_name']
+        target_label: 'container'
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
+        target_label: 'service'
+      - source_labels: ['__meta_docker_container_image_name']
+        target_label: 'image'
+      
+      # Add environment label
+      - source_labels: ['__meta_docker_container_label_environment']
+        target_label: 'environment'
+        replacement: 'docker'
+    
+    pipeline_stages:
+      # Parse Spring Boot logs
+      - regex:
+          expression: '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) - (?P<logger>[\w\.]+) - (?P<message>.*)$'
+      
+      # Extract timestamp
+      - timestamp:
+          source: timestamp
+          format: "2006-01-02 15:04:05"
+      
+      # Add labels
+      - labels:
+          logger:
+
+  # System logs (optional)
+  - job_name: syslog
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: syslog
+          __path__: /var/log/syslog
+    
+    pipeline_stages:
+      - regex:
+          expression: '(?P<timestamp>\w+ \d+ \d+:\d+:\d+) (?P<hostname>\S+) (?P<process>\w+)(\[(?P<pid>\d+)\])?: (?P<message>.*)'
+      
+      - timestamp:
+          source: timestamp
+          format: "Jan 2 15:04:05"
+          location: UTC
+      
+      - labels:
+          hostname:
+          process:
+          job:
+
+# Tenant configuration (if using Loki multi-tenancy)
+# tenant_id: default
